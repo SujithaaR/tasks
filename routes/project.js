@@ -1,40 +1,58 @@
 const express = require('express');
-const Project = require('../models/Project');
-
 const router = express.Router();
+const Project = require('../models/Project');
+const { isAdmin, isTeamLead } = require('../middlewares/authMiddleware');
 
-router.post('/', async (req, res) => {
+router.post('/', isAdmin, async (req, res) => {
     try {
         const { name, description, owner } = req.body;
-        const project = new Project({ name, description, owner });
-        await project.save();
-        res.status(201).json({ message: 'Project created successfully' });
-    } catch (error) {
-        console.error('Error creating project:', error); // Log the error for debugging
-        res.status(400).json({ error: 'Project creation failed', details: error.message });
-    }
-});
 
-
-router.get('/', async (req, res) => {
-    try {
-        const projects = await Project.find().populate('owner', 'username email');
-        res.json(projects);
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch projects' });
-    }
-});
-
-router.get('/:id', async (req, res) => {
-    try {
-        const project = await Project.findById(req.params.id).populate('owner', 'username email');
-        if (!project) {
-            return res.status(404).json({ error: 'Project not found' });
+        // Validate input
+        if (!name || !description || !owner) {
+            return res.status(400).send('Bad Request: Missing required fields');
         }
-        res.json(project);
+
+        console.log('Received data:', { name, description, owner });
+        console.log('Admin ID:', req.user._id);
+
+        // Create new project
+        const project = new Project({ name, description, owner, createdBy: req.user._id });
+        await project.save();
+        console.log("project"+ project);
+        
+        res.status(201).send(project);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch project' });
+        console.error('Error creating project:', error.message);
+        res.status(500).send(`Error creating project: ${error.message}`);
+    }
+});
+
+
+// GET route to get all projects created by the admin (admin only)
+router.get('/', isAdmin, async (req, res) => {
+    try {
+        console.log(req.user._id);
+        const projects = await Project.find({ createdBy: req.user._id });
+        console.log(projects);
+        
+        res.status(200).send(projects);
+    } catch (error) {
+        console.error('Error fetching projects for admin:', error);
+        res.status(500).send('Error fetching projects');
+    }
+});
+
+// GET route to get projects assigned to a team lead (team lead only)
+router.get('/teamlead/projects', isTeamLead, async (req, res) => {
+    try {
+        const projects = await Project.find({ owner: req.user._id });
+        res.status(200).send(projects);
+    } catch (error) {
+        console.error('Error fetching projects for team lead:', error);
+        res.status(500).send('Error fetching projects');
     }
 });
 
 module.exports = router;
+
+
